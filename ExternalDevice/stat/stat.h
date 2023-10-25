@@ -17,5 +17,6 @@ extern unsigned short RunningAverageA(unsigned short value, bool reset);
 extern unsigned short RunningAverageTension(float value, bool reset);
 extern short KalmanA(short value, bool reset);
 extern short KalmanB(short value, bool reset);
+extern short SecantA(unsigned short value, bool reset);
 
 #endif /* STAT_H_ */

@@ -1,5 +1,5 @@
 /*
- * A328P_Industrial_Autoassembling.c
+ * Autobrake-ExternalDevice
  *
  * Created: 27.12.2022 21:34:47
  * Author : Abramov IV
@@ -86,6 +86,7 @@
 #include "dht/dht.h"
 #include "uart/uart.h"
 #include "stat/stat.h"
+#include "periphery/periphery.h"
 
 const unsigned short ERROR_A = 1;					
 const unsigned short ERROR_B = 2;
@@ -170,58 +171,14 @@ struct Data
 	bool isRequested;
 	} Rx = { { 0 }, 0, 0, false, false, false };
 
-void Timer0(bool enable)
-{
-	if (enable)
-	{
-		TCCR0B = (1 << CS02)|(1 << CS01)|(1 << CS00);	 
-		High(TIMSK0, TOIE0);							
-		TCNT0 = 0;
-		return;
-	}
-	
-	Low(TIMSK0, TOIE0);
-	TCCR0B = 0x00;										  
-}
-
 ISR(TIMER0_OVF_vect)
 {
 	Timer0_OverflowCount++;	  
 }
 
-void Timer1(bool enable)
-{
-	if (enable)
-	{
-		TCCR1B = (1 << CS12)|(1 << CS11)|(1 << CS10);   
-		High(TIMSK1, TOIE1);
-		TCNT1 = 0;
-		return;
-	}
-	
-	Low(TIMSK1, TOIE1);
-	TCCR1B = 0x00;
-}
-
 ISR(TIMER1_OVF_vect)
 {
 	Timer1_OverflowCount++;
-}
-
-void Timer2(bool enable)
-{
-	TCNT2 = 0; 	   
-	
-	if (enable)
-	{
-		TCCR2A = (1 << WGM21)|(1 << WGM20);				
-		TCCR2B = (1 << CS22)|(1 << CS21)|(1 << CS20);	
-		High(TIMSK2, TOIE2);							
-		return;
-	}
-	
-	TCCR2B = 0x00;										
-	Low(TIMSK2, TOIE2);									
 }
 
 ISR(TIMER2_OVF_vect)
@@ -238,23 +195,6 @@ ISR(TIMER2_OVF_vect)
 	}
 
 	TCNT2 = 131;
-}
-
-void Converter(unsigned short option)
-{
-	switch (option)
-	{
-		case On:
-		High(ADCSRA, ADSC);
-		break;
-		case Off:
-		Low(ADCSRA, ADSC);
-		break;
-		default:
-		ADCSRA = 0x8F;
-		ADMUX = 0x47;
-		break;
-	}
 }
 
 ISR(ADC_vect)
@@ -430,66 +370,24 @@ void Receive()
 
 void Transmit(unsigned short *p_a, unsigned short *p_b, float *p_ten, float *p_tem, float *p_hum)
 {
-	static char a[8] = { 0 }, b[8] = { 0 }, ten[8] = { 0 }; 
-	static char tem[8] = { 0 }, hum[8] = { 0 }, sum[8] = { 0 }, buffer[64] = { 0 };
+	static char temp[16] = { 0 }, buffer[64] = { 0 };
 		
-	sprintf(a, "$A%d$", *p_a);
-	sprintf(b, "P%d$", *p_b);
-	sprintf(ten, "T%.0f$", *p_ten);
-	sprintf(tem, "TMP%.1f$", *p_tem);
-	sprintf(hum, "H%.1f$", *p_hum);
-	
-	strcat(buffer, a);
-	strcat(buffer, b);
-	strcat(buffer, ten);
-	strcat(buffer, tem);
-	strcat(buffer, hum);
-	
-	sprintf(sum, "0x%X", GetCRC8(buffer));
-	strcat(buffer, sum);
+	sprintf(temp, "$A%d$", *p_a);
+	strcat(buffer, temp);
+	sprintf(temp, "P%d$", *p_b);
+	strcat(buffer, temp);
+	sprintf(temp, "T%.0f$", *p_ten);
+	strcat(buffer, temp);
+	sprintf(temp, "TMP%.1f$", *p_tem);
+	strcat(buffer, temp);
+	sprintf(temp, "H%.1f$", *p_hum);
+	strcat(buffer, temp);
+	sprintf(temp, "0x%X", GetCRC8(buffer));
+	strcat(buffer, temp);
 	
 	TxString(buffer);
 	
 	memset(buffer, 0, sizeof(buffer));
-}
-
-short SecantA(unsigned short value, bool reset)
-{
-	static unsigned short buffer[128] = { 0 };
-	static unsigned short index = 0;
-	static unsigned short average = 0;
-	static unsigned short stdev = 0;
-	
-	if (reset)
-	{
-		index = 0;
-		average = 0;
-		stdev = 0;	
-		
-		for (int i=0; i<128; i++)
-			buffer[i] = 0;
-			
-		return 0;
-	}
-	
-	if (index < 128) 
-	{
-		buffer[index++] = value;
-		average = RunningAverageA(value, false);
-		return value;
-	}
-	
-	if (!stdev) 
-	{
-		average = RunningAverageA(value, false);
-		stdev = StandartDeviation(buffer, &average);
-	}
-	
-	if (abs(average - value) > stdev) return average;
-	
-	average = RunningAverageA(value, false);
-	
-	return value;
 }
 
 void Initialization()
@@ -952,7 +850,7 @@ bool Stop()
 
 int main(void)
 {
-	static float temperature = 0, humidity = 0, tension = 0;
+	float temperature = 0.0, humidity = 0.0, tension = 0.0;
 	unsigned short startDelayCount = 0, measureDelayCount = 0;
 	unsigned short a = 0, b = 0;
 	short assembling = 0;
@@ -1009,7 +907,7 @@ int main(void)
 		
 		if (envRequest)
 		{
-			GetEnvironment(&temperature, &humidity);
+			//GetEnvironment(&temperature, &humidity);
 			envRequest = false;
 		}
 		
@@ -1057,8 +955,8 @@ int main(void)
 
 				if (!measureDelayCount)
 				{		    
-					a = KalmanA(SecantA(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, false), false);
-					b = KalmanB(((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB, false);	
+					a = SecantA(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, false);
+					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;	
 					assembling = 0; // equation wasnt delivered;
 					if (IsTransmit) Transmit(&a, &b, &tension, &temperature, &humidity);
 					isUpdated = true;

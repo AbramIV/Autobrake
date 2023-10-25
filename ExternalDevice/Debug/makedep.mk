@@ -6,6 +6,8 @@ dht\dht.c
 
 main.c
 
+periphery\periphery.c
+
 stat\stat.c
 
 uart\uart.c

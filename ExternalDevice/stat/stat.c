@@ -110,3 +110,42 @@ short KalmanB(short value, bool reset)
 	
 	return (short)currentEstimate;
 }
+
+short SecantA(unsigned short value, bool reset)
+{
+	static unsigned short buffer[128] = { 0 };
+	static unsigned short index = 0;
+	static unsigned short average = 0;
+	static unsigned short stdev = 0;
+	
+	if (reset)
+	{
+		index = 0;
+		average = 0;
+		stdev = 0;
+		
+		for (int i=0; i<128; i++)
+		buffer[i] = 0;
+		
+		return 0;
+	}
+	
+	if (index < 128)
+	{
+		buffer[index++] = value;
+		average = RunningAverageA(value, false);
+		return value;
+	}
+	
+	if (!stdev)
+	{
+		average = RunningAverageA(value, false);
+		stdev = StandartDeviation(buffer, &average);
+	}
+	
+	if (abs(average - value) > stdev) return average;
+	
+	average = RunningAverageA(value, false);
+	
+	return value;
+}
