@@ -12,7 +12,7 @@ void USART(unsigned short option)
 	switch (option)
 	{
 		case On:
-		UCSR0B = (1 << TXEN0) | (1 << RXEN0) | (1 << RXCIE0);
+		UCSR0B = (1 << TXEN0) | (0 << RXEN0) | (0 << RXCIE0);
 		break;
 		case Off:
 		UCSR0B = (0 << TXEN0) | (0 << RXEN0) | (0 << RXCIE0);

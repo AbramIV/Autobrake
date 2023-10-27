@@ -155,21 +155,11 @@ unsigned short CurrentError = 0;
 bool IsReloadSettings = false;
 bool IsRun = false;
 								
-struct Analog
+struct st_analog
 {
 	signed int value;
 	bool done;
-} Convert = { 0, 0, false };
-
-struct Data
-{
-	char buffer[8];
-	short index;
-	short disconnectCount;
-	bool isDataReceived;
-	bool isConnected;
-	bool isRequested;
-	} Rx = { { 0 }, 0, 0, false, false, false };
+} convert = { 0, 0, false };
 
 ISR(TIMER0_OVF_vect)
 {
@@ -200,36 +190,8 @@ ISR(TIMER2_OVF_vect)
 ISR(ADC_vect)
 {
 	ADCSRA |= (0<<ADSC);
-	Convert.value = ADCW;
-	Convert.done = true;
-}
-
-ISR(USART_RX_vect)
-{
-	if (Rx.isConnected)
-	{
-		if (UDR0 == '$')
-		{
-			Rx.isRequested = true;
-			Rx.disconnectCount = 0;
-		}
-		return;
-	}
-	
-	Rx.buffer[Rx.index++] = UDR0;
-	
-	if (Rx.index > sizeof(Rx.buffer))
-	{
-		Rx.index = 0;
-		return;
-	}
-	
-	if (Rx.buffer[Rx.index - 1] == '$')
-	{
-		Low(UCSR0B, RXCIE0);
-		Rx.buffer[Rx.index - 1] = '\0';
-		Rx.isDataReceived = true;
-	}
+	convert.value = ADCW;
+	convert.done = true;
 }
 
 void UploadMemory()
@@ -349,25 +311,6 @@ void LoadSettings()
 	sei();
 }
 
-void Receive()
-{		
-	if (!strcmp(Rx.buffer, "INIT")) 
-	{
-		TxString("OK$");
-		Rx.isConnected = true;
-	}
-	else if (!strcmp(Rx.buffer, "$")) Rx.isConnected = true;
-	else if (!strcmp(Rx.buffer, "VARS")) UploadVariables();
-	else if (!strcmp(Rx.buffer, "MEM")) UploadMemory();
-	else
-		TxString("INIT_ERROR$");
-
-	Rx.index = 0;
-	memset(Rx.buffer, '\0', sizeof(Rx.buffer));
-	Rx.isDataReceived = false;
-	High(UCSR0B, RXCIE0);
-}
-
 void Transmit(unsigned short *p_a, unsigned short *p_b, float *p_ten, float *p_tem, float *p_hum)
 {
 	static char temp[16] = { 0 }, buffer[64] = { 0 };
@@ -399,12 +342,10 @@ void Initialization()
 	PORTC = 0b11000000;
 	
 	DDRD = 0b00001100;
-	PORTD = 0b11110011;
+	PORTD = 0b11110011;	    
 	
 	LoadSettings();
 
-	KalmanA(0, true);
-	KalmanB(0, true);
 	Timer2(true);	
 	USART(Init);
 	USART(On);
@@ -833,10 +774,6 @@ bool Stop()
 	Timer0(false);
 	Timer1(false);
 	SetDirection(0, true);	
-	KalmanA(0, true);
-	KalmanB(0, true);	
-	RunningAverageA(0, true);
-	SecantA(0, true);
 	Converter(Off);
 	
 	if (DisplayMode != Error) 
@@ -849,21 +786,35 @@ bool Stop()
 }
 
 int main(void)
-{
+{				
 	float temperature = 0.0, humidity = 0.0, tension = 0.0;
-	unsigned short startDelayCount = 0, measureDelayCount = 0;
-	unsigned short a = 0, b = 0;
+	unsigned short startDelayCount = 0, measureDelayCount = 0, a = 0, b = 0;
 	short assembling = 0;
-	bool isUpdated = false, envRequest = true;
+	bool envRequest = true;
 
+	st_deflector deflector = 
+	{
+		.stdev = 0,
+		.index = 0,
+		.buffer = (float*)malloc(sizeof(float)*128),
+		.average =
+		{
+			.result = 0,
+			.index = 0,
+			.buffer = (float*)malloc(sizeof(float)*128)
+		}
+	};
+	st_kalman kalmanA = { 0, 0, 0, 0, 80, 0.006 };
+	st_kalman kalmanB = { 0, 0, 0, 0, 80, 0.006 };
+							 
 	Initialization();
 	
 	while(1)
 	{	
-		if (Convert.done)
+		if (convert.done)
 		{
-			tension = Convert.value*1.953125;
-			Convert.done = false;
+			tension = convert.value*1.953125;
+			convert.done = false;
 		}
 		
 		if (HandleAfter8ms)
@@ -911,7 +862,6 @@ int main(void)
 			envRequest = false;
 		}
 		
-		
 		if (HandleAfterSecond)	 
 		{		
 			if (!BtnMinus && InterfaceMode == Settings) SettingExitCount++;
@@ -944,10 +894,17 @@ int main(void)
 				startDelayCount = StartDelay;
 				measureDelayCount = MEASURE_DELAY;
 				a = 0; b = 0; assembling = 0;
+				deflector.buffer = (float*)malloc(sizeof(float)*128);
 				continue;
 			}
 			
-			if (!Running && IsRun) IsRun = Stop();	
+			if (!Running && IsRun) 
+			{
+				IsRun = Stop();
+				Kalman(0, &kalmanA, true);
+				Kalman(0, &kalmanB, true);
+				Deflector(0, &deflector, true);
+			};	
 			
 			if (IsRun)						 
 			{
@@ -955,11 +912,10 @@ int main(void)
 
 				if (!measureDelayCount)
 				{		    
-					a = SecantA(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, false);
+					a = Deflector(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, &deflector, false);
 					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;	
-					assembling = 0; // equation wasnt delivered;
+					assembling = 0; // equation wasn't delivered;
 					if (IsTransmit) Transmit(&a, &b, &tension, &temperature, &humidity);
-					isUpdated = true;
 					envRequest = true;													    							   
 				}
 				
@@ -984,35 +940,10 @@ int main(void)
 				if (!DisplayTimeoutCount) DisplayMode = Off;
 			}
 			
-			if (Rx.isConnected) 
-			{
-				Rx.disconnectCount++;
-				
-				if (Rx.isRequested)
-				{
-					if (IsRun && isUpdated)
-					{
-						 //Transmit(&a, &b, &r);
-						 isUpdated = false;
-					}
-					else TxChar('$');
-					
-					Rx.isRequested = false;
-				}
-			}
-			
-			if (Rx.disconnectCount >= RX_DISCONNECT_TIMEOUT)
-			{
-				Rx.isConnected = false;
-				Rx.disconnectCount = 0;
-			}
-			
 			if (DisplayMode == Error) PrintError();
 
 			HandleAfterSecond = false;
 		}
-		
-		if (Rx.isDataReceived) Receive();
 		
 		wdt_reset();
 	}

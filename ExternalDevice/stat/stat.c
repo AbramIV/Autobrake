@@ -7,145 +7,81 @@
 
 #include "stat.h"
 
-unsigned short StandartDeviation(unsigned short *values, unsigned short *average)
+float Deviation(float *values, float *average)
 {
-	unsigned long sum = 0;
+	double sum = 0;
 	
 	for (int i = 0; i < 128; i++)
-	sum += pow(abs(values[i]-*average), 2);
+		sum += pow(abs(values[i]-*average), 2);
 
-	return sqrt(sum/128)*2;
+	return sqrt(sum/128.f)*2.f;
 }
 
-unsigned short RunningAverageA(unsigned short value, bool reset)
+void Average(float *value, st_average *average, bool reset)
 {
-	static unsigned short buffer[128] = { 0 };
-	static unsigned long result = 0;
-	static unsigned short index = 0;
-	
 	if (reset)
 	{
-		result = 0;
-		index = 0;
+		average->result = 0;
+		average->index = 0;
 
-		for (int i=0; i<128; i++)
-		buffer[i] = 0;
-
-		return 0;
+		for (int i=0; i<sizeof(average->buffer)/sizeof(average->buffer[0]); i++)
+		average->buffer[i] = 0;
 	}
 	
-	result += value - (unsigned long)buffer[index];
-	buffer[index] = value;
-	index = (index + 1) % 128;
-	
-	return result/128;
+	average->result += *value - average->buffer[average->index];
+	average->buffer[average->index] = *value;
+	average->index = (average->index + 1) % sizeof(average->buffer)/sizeof(average->buffer[0]);
+	average->result /= (sizeof(average->buffer)/sizeof(average->buffer[0]));
 }
 
-unsigned short RunningAverageTension(float value, bool reset)
+void Kalman(float *value, st_kalman *kalman, bool reset)
 {
-	static float buffer[16] = { 0 };
-	static float result = 0;
-	static unsigned short index = 0;
-	
 	if (reset)
 	{
-		result = 0;
-		index = 0;
-
-		for (int i=0; i<16; i++)
-		buffer[i] = 0;
-
-		return 0;
+		kalman->variation = kalman->estimation;
+		kalman->result = 0;
+		kalman->last = 0;
+		kalman->gain = 0;
 	}
 	
-	result += value - buffer[index];
-	buffer[index] = value;
-	index = (index + 1) % 16;
-	
-	return result/16.f;
+	kalman->gain = kalman->variation / (kalman->variation + kalman->estimation);
+	kalman->result = kalman->last + kalman->gain * (*value - kalman->last);
+	kalman->variation = (1.f - kalman->gain) * kalman->variation + fabs(kalman->last - kalman->result) * kalman->speed;
+	kalman->last = kalman->result;
 }
 
-short KalmanA(short value, bool reset)
-{
-	static float estimateVariation = 0;
-	static float currentEstimate = 0;
-	static float lastEstimate = 0;
-	static float gain = 0;
-	
+float Deflector(float value, st_deflector *deflector, bool reset)
+{	
 	if (reset)
 	{
-		estimateVariation = 80;
-		currentEstimate = 0;
-		lastEstimate = 0;
-		gain = 0;
-	}
-	
-	gain = estimateVariation / (estimateVariation + 80);
-	currentEstimate = lastEstimate + gain * (value - lastEstimate);
-	estimateVariation = (1.f - gain) * estimateVariation + fabs(lastEstimate - currentEstimate) * 0.006;
-	lastEstimate = currentEstimate;
-	
-	return (short)currentEstimate;
-}
-
-short KalmanB(short value, bool reset)
-{
-	static float estimateVariation = 0;
-	static float currentEstimate = 0;
-	static float lastEstimate = 0;
-	static float gain = 0;
-	
-	if (reset)
-	{
-		estimateVariation = 80;
-		currentEstimate = 0;
-		lastEstimate = 0;
-		gain = 0;
-	}
-	
-	gain = estimateVariation / (estimateVariation + 80);
-	currentEstimate = lastEstimate + gain * (value - lastEstimate);
-	estimateVariation = (1.f - gain) * estimateVariation + fabs(lastEstimate - currentEstimate) * 0.006;
-	lastEstimate = currentEstimate;
-	
-	return (short)currentEstimate;
-}
-
-short SecantA(unsigned short value, bool reset)
-{
-	static unsigned short buffer[128] = { 0 };
-	static unsigned short index = 0;
-	static unsigned short average = 0;
-	static unsigned short stdev = 0;
-	
-	if (reset)
-	{
-		index = 0;
-		average = 0;
-		stdev = 0;
+		deflector->index = 0;
+		deflector->stdev = 0;
 		
-		for (int i=0; i<128; i++)
-		buffer[i] = 0;
+		Average(&value, &deflector->average, true);
+		
+		for (int i=0; i<sizeof(deflector->buffer)/sizeof(deflector->buffer[0]); i++)
+			deflector->buffer[i] = 0;
 		
 		return 0;
 	}
 	
-	if (index < 128)
+	if (deflector->index < sizeof(deflector->buffer)/sizeof(deflector->buffer[0]))
 	{
-		buffer[index++] = value;
-		average = RunningAverageA(value, false);
+		deflector->buffer[deflector->index++] = value;
+		Average(&value, &deflector->average, false);
 		return value;
 	}
 	
-	if (!stdev)
+	if (!deflector->stdev)
 	{
-		average = RunningAverageA(value, false);
-		stdev = StandartDeviation(buffer, &average);
+		Average(&value, &deflector->average, false);
+		deflector->stdev = Deviation(deflector->buffer, &deflector->average.result);
+		free(deflector->buffer);
 	}
 	
-	if (abs(average - value) > stdev) return average;
-	
-	average = RunningAverageA(value, false);
+	if (abs(deflector->average.result - value) > deflector->stdev) return deflector->average.result;
+							
+	Average(&value, &deflector->average, false);
 	
 	return value;
 }

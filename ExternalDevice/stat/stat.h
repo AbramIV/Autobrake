@@ -9,14 +9,37 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
+typedef struct st_average
+{
+	float result;
+	unsigned short index;
+	float *buffer;
+} st_average;
+
+typedef struct st_kalman
+{
+	float result;
+	float variation;
+	float last;
+	float gain;
+	float estimation;
+	float speed;
+} st_kalman;
+
+typedef struct st_deflector
+{
+	float stdev;
+	unsigned short index;
+	float *buffer;
+	st_average average;
+} st_deflector;
+
 #ifndef STAT_H_
 #define STAT_H_
 
-extern unsigned short StandartDeviation(unsigned short *values, unsigned short *average);
-extern unsigned short RunningAverageA(unsigned short value, bool reset);
-extern unsigned short RunningAverageTension(float value, bool reset);
-extern short KalmanA(short value, bool reset);
-extern short KalmanB(short value, bool reset);
-extern short SecantA(unsigned short value, bool reset);
+extern float Deviation(float *values, float *average);
+extern void Average(float *value, st_average *average, bool reset);
+extern void Kalman(float *value, st_kalman *kalman, bool reset);
+extern float Deflector(float value, st_deflector *secant, bool reset);
 
 #endif /* STAT_H_ */

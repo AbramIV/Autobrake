@@ -1,0 +1,47 @@
+unsigned short RunningAverageA(unsigned short value, bool reset)
+{
+	static unsigned short buffer[128] = { 0 };
+	static unsigned long result = 0;
+	static unsigned short index = 0;
+	
+	if (reset)
+	{
+		result = 0;
+		index = 0;
+
+		for (int i=0; i<128; i++)
+		buffer[i] = 0;
+
+		return 0;
+	}
+	
+	result += value - (unsigned long)buffer[index];
+	buffer[index] = value;
+	index = (index + 1) % 128;
+	
+	return result/128;
+}
+
+unsigned short RunningAverageTension(float value, bool reset)
+{
+	static float buffer[16] = { 0 };
+	static float result = 0;
+	static unsigned short index = 0;
+	
+	if (reset)
+	{
+		result = 0;
+		index = 0;
+
+		for (int i=0; i<16; i++)
+		buffer[i] = 0;
+
+		return 0;
+	}
+	
+	result += value - buffer[index];
+	buffer[index] = value;
+	index = (index + 1) % 16;
+	
+	return result/16.f;
+}
