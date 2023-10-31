@@ -94,7 +94,7 @@ const unsigned short ERROR_C = 3;
 const unsigned short ERROR_MOTOR = 4;
 const unsigned short ERROR_OVERTIME_MOVING = 5;
 
-const unsigned short MEASURE_DELAY = 30;	 
+const unsigned short MEASURE_DELAY = 3;	 
 const unsigned short SETTING_EXIT = 5;		
 const unsigned short SETTING_AUTO_EXIT = 30; 
 const unsigned short RX_DISCONNECT_TIMEOUT = 5;
@@ -105,7 +105,7 @@ short Pointers[] = { OverfeedPointer, SetpointPointer, HysteresisUpPointer, Hyst
 					 IsTransmitPointer,	MeasuresLimitPointer, MoveLackLimitPointer, OvertimeLimitPointer,
 					 MemoryGetterPointer, VarsGetterPointer, DefaultSetterPointer };	
 					 				 
-short Defaults[] = { 0, 0, 5, -5, 2, 60, 99, 0, 0, 1, 1, 80, 80, 6, 0, 0, 30, 30, 99 };
+short Defaults[] = { 0, 0, 5, -5, 2, 60, 3, 0, 0, 1, 1, 80, 80, 6, 0, 1, 30, 30, 99 };
 					 
 short ChangableValue = 0;	
 
@@ -154,12 +154,8 @@ unsigned short CurrentError = 0;
 
 bool IsReloadSettings = false;
 bool IsRun = false;
-								
-struct st_analog
-{
-	signed int value;
-	bool done;
-} convert = { 0, 0, false };
+
+unsigned int adc = 0;
 
 ISR(TIMER0_OVF_vect)
 {
@@ -190,8 +186,7 @@ ISR(TIMER2_OVF_vect)
 ISR(ADC_vect)
 {
 	ADCSRA |= (0<<ADSC);
-	convert.value = ADCW;
-	convert.done = true;
+	adc = ADCW;
 }
 
 void UploadMemory()
@@ -327,6 +322,7 @@ void Transmit(unsigned short *p_a, unsigned short *p_b, float *p_ten, float *p_t
 	strcat(buffer, temp);
 	sprintf(temp, "0x%X", GetCRC8(buffer));
 	strcat(buffer, temp);
+	strcat(buffer, "\r\n");
 	
 	TxString(buffer);
 	
@@ -344,6 +340,7 @@ void Initialization()
 	DDRD = 0b00001100;
 	PORTD = 0b11110011;	    
 	
+	SetDefaultSettings();
 	LoadSettings();
 
 	Timer2(true);	
@@ -808,15 +805,9 @@ int main(void)
 	st_kalman kalmanB = { 0, 0, 0, 0, 80, 0.006 };
 							 
 	Initialization();
-	
+
 	while(1)
-	{	
-		if (convert.done)
-		{
-			tension = convert.value*1.953125;
-			convert.done = false;
-		}
-		
+	{			
 		if (HandleAfter8ms)
 		{
 			if (DisplayMode == Current)	 Print(&assembling);	  
@@ -912,10 +903,11 @@ int main(void)
 
 				if (!measureDelayCount)
 				{		    
-					a = Deflector(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, &deflector, false);
+					a = Deflector(((359 + Timer0_OverflowCount*256)/DividerA)*FactorA, &deflector, true);
 					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;	
 					assembling = 0; // equation wasn't delivered;
-					if (IsTransmit) Transmit(&a, &b, &tension, &temperature, &humidity);
+					tension = adc*1.953125;
+					Transmit(&a, &b, &tension, &temperature, &humidity);
 					envRequest = true;													    							   
 				}
 				
