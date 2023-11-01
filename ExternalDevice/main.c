@@ -99,7 +99,7 @@ const unsigned short SETTING_EXIT = 5;
 const unsigned short SETTING_AUTO_EXIT = 30; 
 const unsigned short RX_DISCONNECT_TIMEOUT = 5;
 
-short Pointers[] = { OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, PulseDurationPointer, 
+int Pointers[] = { OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, PulseDurationPointer, 
 					 PulsesIntervalPointer, StartDelayPointer, FactorAPointer, FactorBPointer, DividerAPointer, DividerBPointer,
 					 FactorMeasurePointer, FactorEstimatePointer, FactorSpeedPointer, DisplayTimeoutPointer,
 					 IsTransmitPointer,	MeasuresLimitPointer, MoveLackLimitPointer, OvertimeLimitPointer,
@@ -107,7 +107,7 @@ short Pointers[] = { OverfeedPointer, SetpointPointer, HysteresisUpPointer, Hyst
 					 				 
 short Defaults[] = { 0, 0, 5, -5, 2, 60, 3, 0, 0, 1, 1, 80, 80, 6, 0, 1, 30, 30, 99 };
 					 
-short ChangableValue = 0;	
+int ChangableValue = 0;	
 
 short Overfeed = 0;
 short Setpoint = 0;       
@@ -306,7 +306,7 @@ void LoadSettings()
 	sei();
 }
 
-void Transmit(unsigned short *p_a, unsigned short *p_b, float *p_ten, float *p_tem, float *p_hum)
+void Transmit(unsigned int *p_a, unsigned int *p_b, float *p_ten, float *p_tem, float *p_hum)
 {
 	static char temp[16] = { 0 }, buffer[64] = { 0 };
 		
@@ -353,7 +353,7 @@ void Initialization()
 	wdt_enable(WDTO_8S);
 }
 
-void SetDirection(short *p_d, bool reset)
+void SetDirection(int *pAssembling, bool reset)
 {
 	static unsigned short motorState = Locked, stepCount = 0, stepsInterval = 0;
 	static unsigned short overtimeCount = 0, moveLackCount = 0, lastDifference = 0;
@@ -373,7 +373,7 @@ void SetDirection(short *p_d, bool reset)
 		return;
 	}
 	
-	if (abs(*p_d) <= Setpoint)   
+	if (abs(*pAssembling) <= Setpoint)   
 	{
 		if (motorState == Locked) return;
 		if (overtimeCount) overtimeCount = 0;
@@ -401,16 +401,16 @@ void SetDirection(short *p_d, bool reset)
 	
 	if (CurrentError == ERROR_A || CurrentError == ERROR_B || CurrentError == ERROR_C) return;
 	
-	if (MoveLackLimit && (*p_d >= HysteresisUp || *p_d <= HysteresisDown))
+	if (MoveLackLimit && (*pAssembling >= HysteresisUp || *pAssembling <= HysteresisDown))
 	{
-		if (motorState == Locked) lastDifference = abs(*p_d);
+		if (motorState == Locked) lastDifference = abs(*pAssembling);
 		else
 		{
-			if (abs(lastDifference - abs(*p_d)) < 2) moveLackCount++;
+			if (abs(lastDifference - abs(*pAssembling)) < 2) moveLackCount++;
 			else 
 			{
 				moveLackCount = 0;
-				lastDifference = abs(*p_d);
+				lastDifference = abs(*pAssembling);
 			}
 		}
 	}
@@ -426,7 +426,7 @@ void SetDirection(short *p_d, bool reset)
 	
 	if (PulseDuration)
 	{
-		if (*p_d >= HysteresisUp || (*p_d > 0 && motorState != Locked))
+		if (*pAssembling >= HysteresisUp || (*pAssembling > 0 && motorState != Locked))
 		{
 			OCR2B = Left;
 			motorState = Left;
@@ -436,7 +436,7 @@ void SetDirection(short *p_d, bool reset)
 			return;
 		}
 		
-		if (*p_d <= HysteresisDown || (*p_d < 0 && motorState != Locked))
+		if (*pAssembling <= HysteresisDown || (*pAssembling < 0 && motorState != Locked))
 		{
 			OCR2B = Right;
 			motorState = Right;
@@ -456,9 +456,9 @@ void SetDirection(short *p_d, bool reset)
 	}
 }
 
-void Print(short *p_value)
+void Print(int *p_value)
 {
-	static unsigned short dozens = 0, units = 0, uvalue = 0;
+	static unsigned int dozens = 0, units = 0, uvalue = 0;
 	
 	uvalue = abs(*p_value);
 	
@@ -594,7 +594,7 @@ void ControlModes()
 	}
 }
 
-void CountrolInstant(unsigned short *p_a, unsigned short *p_b)
+void CountrolInstant(unsigned int *p_a, unsigned int *p_b)
 {
 	static unsigned short errorCount = 0;
 	
@@ -785,22 +785,24 @@ bool Stop()
 int main(void)
 {				
 	float temperature = 0.0, humidity = 0.0, tension = 0.0;
-	unsigned short startDelayCount = 0, measureDelayCount = 0, a = 0, b = 0;
-	short assembling = 0;
+	unsigned int startDelayCount = 0, measureDelayCount = 0, a = 0, b = 0;
+	int assembling = 0;
 	bool envRequest = true;
 
 	st_deflector deflector = 
 	{
 		.stdev = 0,
 		.index = 0,
-		.buffer = (float*)malloc(sizeof(float)*128),
+		.bSize = 128,
+		.buffer = (float*)malloc(sizeof(float)*deflector.bSize),
 		.average =
 		{
 			.result = 0,
 			.index = 0,
-			.buffer = (float*)malloc(sizeof(float)*128)
+			.bSize = 128,
+			.buffer = (float*)malloc(sizeof(float)*deflector.average.bSize)
 		}
-	};
+	};	
 	st_kalman kalmanA = { 0, 0, 0, 0, 80, 0.006 };
 	st_kalman kalmanB = { 0, 0, 0, 0, 80, 0.006 };
 							 
@@ -853,6 +855,8 @@ int main(void)
 			envRequest = false;
 		}
 		
+//		HandleAfterSecond = !HandleAfterSecond;
+		
 		if (HandleAfterSecond)	 
 		{		
 			if (!BtnMinus && InterfaceMode == Settings) SettingExitCount++;
@@ -885,7 +889,6 @@ int main(void)
 				startDelayCount = StartDelay;
 				measureDelayCount = MEASURE_DELAY;
 				a = 0; b = 0; assembling = 0;
-				deflector.buffer = (float*)malloc(sizeof(float)*128);
 				continue;
 			}
 			
@@ -901,9 +904,11 @@ int main(void)
 			{
 				LedInv;					
 
+//				measureDelayCount = 0;
+
 				if (!measureDelayCount)
 				{		    
-					a = Deflector(((359 + Timer0_OverflowCount*256)/DividerA)*FactorA, &deflector, true);
+					a = Deflector(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, &deflector, false);
 					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;	
 					assembling = 0; // equation wasn't delivered;
 					tension = adc*1.953125;

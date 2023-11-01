@@ -12,7 +12,8 @@
 typedef struct st_average
 {
 	float result;
-	unsigned short index;
+	unsigned int index;
+	unsigned int bSize;
 	float *buffer;
 } st_average;
 
@@ -29,7 +30,8 @@ typedef struct st_kalman
 typedef struct st_deflector
 {
 	float stdev;
-	unsigned short index;
+	unsigned int index;
+	unsigned int bSize;
 	float *buffer;
 	st_average average;
 } st_deflector;
@@ -38,8 +40,8 @@ typedef struct st_deflector
 #define STAT_H_
 
 extern float Deviation(float *values, float *average);
-extern void Average(float *value, st_average *average, bool reset);
-extern void Kalman(float *value, st_kalman *kalman, bool reset);
+extern void Average(float value, st_average *average, bool reset);
+extern void Kalman(float value, st_kalman *kalman, bool reset);
 extern float Deflector(float value, st_deflector *secant, bool reset);
 
 #endif /* STAT_H_ */
