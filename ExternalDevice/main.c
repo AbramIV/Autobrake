@@ -74,6 +74,8 @@
 #define VarsGetterPointer		92
 #define DefaultSetterPointer	99
 
+#define EnvRequestInterval	2
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
@@ -94,12 +96,12 @@ const unsigned short ERROR_C = 3;
 const unsigned short ERROR_MOTOR = 4;
 const unsigned short ERROR_OVERTIME_MOVING = 5;
 
-const unsigned short MEASURE_DELAY = 3;	 
+const unsigned short MEASURE_DELAY = 30;	 
 const unsigned short SETTING_EXIT = 5;		
 const unsigned short SETTING_AUTO_EXIT = 30; 
 const unsigned short RX_DISCONNECT_TIMEOUT = 5;
 
-int Pointers[] = { OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, PulseDurationPointer, 
+int Pointers[] = {   OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, PulseDurationPointer, 
 					 PulsesIntervalPointer, StartDelayPointer, FactorAPointer, FactorBPointer, DividerAPointer, DividerBPointer,
 					 FactorMeasurePointer, FactorEstimatePointer, FactorSpeedPointer, DisplayTimeoutPointer,
 					 IsTransmitPointer,	MeasuresLimitPointer, MoveLackLimitPointer, OvertimeLimitPointer,
@@ -185,7 +187,7 @@ ISR(TIMER2_OVF_vect)
 
 ISR(ADC_vect)
 {
-	ADCSRA |= (0<<ADSC);
+	Converter(Off);
 	adc = ADCW;
 }
 
@@ -322,7 +324,6 @@ void Transmit(unsigned int *p_a, unsigned int *p_b, float *p_ten, float *p_tem, 
 	strcat(buffer, temp);
 	sprintf(temp, "0x%X", GetCRC8(buffer));
 	strcat(buffer, temp);
-	strcat(buffer, "\r\n");
 	
 	TxString(buffer);
 	
@@ -331,7 +332,7 @@ void Transmit(unsigned int *p_a, unsigned int *p_b, float *p_ten, float *p_tem, 
 
 void Initialization()
 {
-	DDRB = 0b00000110;					
+	DDRB = 0b00010110;					
 	PORTB = 0b00111001;
 	
 	DDRC = 0b00111111;
@@ -340,7 +341,6 @@ void Initialization()
 	DDRD = 0b00001100;
 	PORTD = 0b11110011;	    
 	
-	SetDefaultSettings();
 	LoadSettings();
 
 	Timer2(true);	
@@ -351,6 +351,8 @@ void Initialization()
 	
 	wdt_reset();
 	wdt_enable(WDTO_8S);
+	
+	LedOn;
 }
 
 void SetDirection(int *pAssembling, bool reset)
@@ -566,22 +568,22 @@ void ControlModes()
 			switch (Pointers[IndexCurrentSetting])
 			{
 				case DefaultSetterPointer:
-				SetDefaultSettings();
-				IsReloadSettings = true;
-				break;
+					SetDefaultSettings();
+					IsReloadSettings = true;
+					break;
 				case MemoryGetterPointer:
-				UploadMemory();
-				break;
+					UploadMemory();
+					break;
 				case VarsGetterPointer:
-				UploadVariables();
-				break;
+					UploadVariables();
+					break;
 				default:
-				InterfaceMode = Setting;
-				DisplayMode = Setting;
-				cli();
-				ChangableValue = eeprom_read_word((uint16_t*)Pointers[IndexCurrentSetting]);
-				sei();
-				break;
+					InterfaceMode = Setting;
+					DisplayMode = Setting;
+					cli();
+					ChangableValue = eeprom_read_word((uint16_t*)Pointers[IndexCurrentSetting]);
+					sei();
+					break;
 			}
 		}
 		else
@@ -755,6 +757,7 @@ void ControlSetting()
 
 bool Start()
 {
+	LedOff;
 	Timer0(true);
 	Timer1(true);
 	CurrentError = Off;
@@ -765,7 +768,7 @@ bool Start()
 
 bool Stop()
 {
-	LedOff;
+	LedOn;
 	PulseOff;
 	FaultOff;
 	Timer0(false);
@@ -785,9 +788,8 @@ bool Stop()
 int main(void)
 {				
 	float temperature = 0.0, humidity = 0.0, tension = 0.0;
-	unsigned int startDelayCount = 0, measureDelayCount = 0, a = 0, b = 0;
+	unsigned int startDelayCount = 0, measureDelayCount = 0, envInterval = 0, a = 0, b = 0;
 	int assembling = 0;
-	bool envRequest = true;
 
 	st_deflector deflector = 
 	{
@@ -849,13 +851,11 @@ int main(void)
 			 HandleAfter200ms = false;
 		}
 		
-		if (envRequest)
+		if (envInterval >= EnvRequestInterval)
 		{
-			//GetEnvironment(&temperature, &humidity);
-			envRequest = false;
+			GetEnvironment(&temperature, &humidity);
+			envInterval = 0;
 		}
-		
-//		HandleAfterSecond = !HandleAfterSecond;
 		
 		if (HandleAfterSecond)	 
 		{		
@@ -865,6 +865,7 @@ int main(void)
 			if (SettingExitCount >= SETTING_EXIT || IsReloadSettings || SettingAutoExitCount >= SETTING_AUTO_EXIT)  // reload settings after changing 
 			{
 				SettingExitCount = 0;
+				SettingAutoExitCount = 0;
 				IndexCurrentSetting = 0;
 				InterfaceMode = Common;
 				IsReloadSettings = false;
@@ -885,6 +886,7 @@ int main(void)
 			if (Running && !IsRun) 		  
 			{
 				IsRun = Start();
+				envInterval = EnvRequestInterval;
 				HandleAfterSecond = false;
 				startDelayCount = StartDelay;
 				measureDelayCount = MEASURE_DELAY;
@@ -902,18 +904,15 @@ int main(void)
 			
 			if (IsRun)						 
 			{
-				LedInv;					
-
-//				measureDelayCount = 0;
-
 				if (!measureDelayCount)
-				{		    
-					a = Deflector(((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA, &deflector, false);
+				{		   
+					LedInv;
+					a = ((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA;
 					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;	
 					assembling = 0; // equation wasn't delivered;
-					tension = adc*1.953125;
+					tension = adc*0.9765625;
 					Transmit(&a, &b, &tension, &temperature, &humidity);
-					envRequest = true;													    							   
+					envInterval++;													    							   
 				}
 				
 				if (!startDelayCount)

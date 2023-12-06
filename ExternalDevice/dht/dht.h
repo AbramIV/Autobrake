@@ -8,6 +8,6 @@
 #define DHT_PIN PINB
 #define DHT_INPUTPIN 4
 
-#define DHT_TIMEOUT 100
+#define DHT_TIMEOUT 200
 
-extern short GetEnvironment(float *temperature, float *humidity);
+extern char GetEnvironment(float *temperature, float *humidity);
