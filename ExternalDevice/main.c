@@ -99,7 +99,6 @@ const unsigned short ERROR_OVERTIME_MOVING = 5;
 const unsigned short MEASURE_DELAY = 30;	 
 const unsigned short SETTING_EXIT = 5;		
 const unsigned short SETTING_AUTO_EXIT = 30; 
-const unsigned short RX_DISCONNECT_TIMEOUT = 5;
 
 int Pointers[] = {   OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, 
 					 PulseDurationPointer, PulsesIntervalPointer, StartDelayPointer, FactorAPointer, 
@@ -338,6 +337,7 @@ void Initialization()
 	DDRD = 0b00001100;
 	PORTD = 0b11110011;	    
 	
+	SetDefaultSettings();
 	LoadSettings();
 
 	Timer2(true);	
@@ -781,15 +781,15 @@ bool Stop()
 	return false;
 }
 
-float GetRatio(unsigned int *p_a, unsigned int *p_b, st_kalman *kalmanA, st_kalman *kalmanB)
+float GetRatio(unsigned int *p_a, unsigned int *p_b, st_kalman *p_kalmanA, st_kalman *p_kalmanB)
 {
-	Kalman(*p_a, kalmanA);
-	Kalman(*p_b, kalmanB);
+	Kalman(*p_a, p_kalmanA);
+	Kalman(*p_b, p_kalmanB);
 	
-	if (kalmanA->result <= kalmanB->result) 
-		return (1-kalmanA->result/(kalmanB->result == 0 ? 1 : kalmanB->result))*-1000.f;
+	if (p_kalmanA->result <= p_kalmanB->result) 
+		return (1-p_kalmanA->result/(p_kalmanB->result == 0 ? 1 : p_kalmanB->result))*-1000.f;
 	else 
-		return (1-kalmanB->result/(kalmanA->result))*1000.f;
+		return (1-p_kalmanB->result/(p_kalmanA->result))*1000.f;
 }
 
 int main(void)
@@ -812,11 +812,12 @@ int main(void)
 			.buffer = (float*)malloc(sizeof(float)*deflector.average.bSize)
 		}
 	};
-	st_kalman kalmanA = { 0, 0, 0, 0, FactorEstimate, FactorSpeed };
-	st_kalman kalmanB = { 0, 0, 0, 0, FactorEstimate, FactorSpeed };
-						 
+	 
 	Initialization();
-
+	
+	st_kalman kalmanA = { 0, 0, 0, FactorEstimate, FactorEstimate, FactorSpeed };
+	st_kalman kalmanB = { 0, 0, 0, FactorEstimate, FactorEstimate, FactorSpeed };
+	
 	while(1)
 	{			
 		if (HandleAfter8ms)

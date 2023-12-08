@@ -32,9 +32,9 @@ void Average(float value, st_average *average, bool reset)
 	average->result /= average->bSize;
 }
 
-void Kalman(float value, st_kalman *kalman)
+void Kalman(unsigned int value, st_kalman *kalman)
 {
-	kalman->gain = kalman->variation / (kalman->variation + kalman->estimation);
+	kalman->gain = kalman->variation / (float)(kalman->variation + kalman->estimation);
 	kalman->result = kalman->last + kalman->gain * (value - kalman->last);
 	kalman->variation = (1.f - kalman->gain) * kalman->variation + fabs(kalman->last - kalman->result) * kalman->speed;
 	kalman->last = kalman->result;
