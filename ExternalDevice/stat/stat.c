@@ -32,20 +32,20 @@ void Average(float value, st_average *average, bool reset)
 	average->result /= average->bSize;
 }
 
-void Kalman(float value, st_kalman *kalman, bool reset)
+void Kalman(float value, st_kalman *kalman)
 {
-	if (reset)
-	{
-		kalman->variation = kalman->estimation;
-		kalman->result = 0;
-		kalman->last = 0;
-		kalman->gain = 0;
-	}
-	
 	kalman->gain = kalman->variation / (kalman->variation + kalman->estimation);
 	kalman->result = kalman->last + kalman->gain * (value - kalman->last);
 	kalman->variation = (1.f - kalman->gain) * kalman->variation + fabs(kalman->last - kalman->result) * kalman->speed;
 	kalman->last = kalman->result;
+}
+
+void KalmanReset(st_kalman *kalman)
+{
+	kalman->variation = kalman->estimation;
+	kalman->result = 0;
+	kalman->last = 0;
+	kalman->gain = 0;
 }
 
 float Deflector(float value, st_deflector *deflector, bool reset)
