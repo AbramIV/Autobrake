@@ -11,7 +11,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Helpers", "Helpers\Helpers.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SerialSingleReceiver", "SerialSingleReceiver\SerialSingleReceiver.csproj", "{14ECDEB1-4AED-4186-97EF-0449EEAF3E7B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StatLib", "StatLib\StatLib.csproj", "{0CC949D9-75A2-468C-8D9F-3C8959D0CE36}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "StatLib", "StatLib\StatLib.csproj", "{0CC949D9-75A2-468C-8D9F-3C8959D0CE36}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataHandler", "DataHandler\DataHandler.csproj", "{00E01293-EA8D-435F-BB02-F343479C13F2}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{0CC949D9-75A2-468C-8D9F-3C8959D0CE36}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0CC949D9-75A2-468C-8D9F-3C8959D0CE36}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0CC949D9-75A2-468C-8D9F-3C8959D0CE36}.Release|Any CPU.Build.0 = Release|Any CPU
+		{00E01293-EA8D-435F-BB02-F343479C13F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{00E01293-EA8D-435F-BB02-F343479C13F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{00E01293-EA8D-435F-BB02-F343479C13F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{00E01293-EA8D-435F-BB02-F343479C13F2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
