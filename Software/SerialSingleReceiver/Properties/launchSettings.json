@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SerialSingleReceiver": {
+      "commandName": "Project",
+      "commandLineArgs": "250000"
+    }
+  }
+}
