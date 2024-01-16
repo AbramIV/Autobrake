@@ -17,19 +17,19 @@ float Deviation(float *values, float *average)
 	return sqrt(sum/128.f)*2.f;
 }
 
-void Average(float value, st_average *average, bool reset)
+void Average(float value, st_average *average)
 {
-	if (reset)
-	{
-		average->result = 0;
-		average->index = 0;
-		average->buffer = (float*)malloc(sizeof(float)*average->bSize);
-	}
-	
 	average->result += value - average->buffer[average->index];
 	average->buffer[average->index] = value;
 	average->index = (average->index + 1) % average->bSize;
 	average->result /= average->bSize;
+}
+
+void AverageReset(st_average *average)
+{
+	average->result = 0;
+	average->index = 0;
+	memset(average->buffer, 0, average->bSize);
 }
 
 void Kalman(unsigned int value, st_kalman *kalman)
@@ -56,7 +56,7 @@ float Deflector(float value, st_deflector *deflector, bool reset)
 		deflector->stdev = 0;
 		deflector->buffer = (float*)malloc(sizeof(float)*deflector->bSize);
 		
-		Average(value, &deflector->average, true);
+		AverageReset(&deflector->average);
 		
 		return 0;
 	}
@@ -64,19 +64,19 @@ float Deflector(float value, st_deflector *deflector, bool reset)
 	if (deflector->index < deflector->bSize)
 	{
 		deflector->buffer[deflector->index++] = value;
-		Average(value, &deflector->average, false);
+		Average(value, &deflector->average);
 		return value;
 	}
 	
 	if (!deflector->stdev)
 	{
-		Average(value, &deflector->average, false);
+		Average(value, &deflector->average);
 		deflector->stdev = Deviation(deflector->buffer, &deflector->average.result);
 	}
 	
 	if (abs(deflector->average.result - value) > deflector->stdev) return deflector->average.result;
 							
-	Average(value, &deflector->average, false);
+	Average(value, &deflector->average);
 	
 	return value;
 }

@@ -74,7 +74,7 @@
 #define DefaultSetterPointer	99
 
 #define EnvRequestInterval	2
-#define DeflectorBufferSize 128
+#define ChannelsBuffersSize 256
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -100,13 +100,18 @@ const unsigned short MEASURE_DELAY = 30;
 const unsigned short SETTING_EXIT = 5;		
 const unsigned short SETTING_AUTO_EXIT = 30; 
 
+const float I = -405.634062187918;
+const float R = 1.10511540716106;
+const float T = 16.2670961564611;
+const float H = 1.91976049212877;
+
 int Pointers[] = {   OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, 
 					 PulseDurationPointer, PulsesIntervalPointer, StartDelayPointer, FactorAPointer, 
 					 FactorBPointer, DividerAPointer, DividerBPointer, FactorEstimatePointer, FactorSpeedPointer, 
 					 DisplayTimeoutPointer, IsTransmitPointer, MeasuresLimitPointer, MoveLackLimitPointer, 
 					 OvertimeLimitPointer, MemoryGetterPointer, VarsGetterPointer, DefaultSetterPointer };	
 					 				 
-short Defaults[] = { 0, 0, 4, -4, 2, 60, 60, 0, 0, 1, 1, 80, 6, 0, 1, 3, 0, 0 };
+short Defaults[] = { 0, 0, 4, -4, 1, 99, 99, 0, 0, 1, 1, 80, 6, 0, 1, 30, 0, 0 };
 					 
 int ChangableValue = 0;	
 
@@ -302,7 +307,7 @@ void LoadSettings()
 	sei();
 }
 
-void Transmit(unsigned int *p_a, unsigned int *p_b, signed int *p_asm, float *p_ten, float *p_tem, float *p_hum)
+void Transmit(unsigned int *p_a, unsigned int *p_b, signed int *p_asm, float *p_tem, float *p_hum)
 {
 	static char temp[16] = { 0 }, buffer[128] = { 0 };
 		
@@ -310,11 +315,9 @@ void Transmit(unsigned int *p_a, unsigned int *p_b, signed int *p_asm, float *p_
 	strcat(buffer, temp);
 	sprintf(temp, "P%d$", *p_b);
 	strcat(buffer, temp);
-	sprintf(temp, "ASM%d$", *p_asm);
+	sprintf(temp, "R%d$", *p_asm);
 	strcat(buffer, temp);
-	sprintf(temp, "T%.0f$", *p_ten);
-	strcat(buffer, temp);
-	sprintf(temp, "TMP%.1f$", *p_tem);
+	sprintf(temp, "T%.1f$", *p_tem);
 	strcat(buffer, temp);
 	sprintf(temp, "H%.1f$", *p_hum);
 	strcat(buffer, temp);
@@ -324,6 +327,27 @@ void Transmit(unsigned int *p_a, unsigned int *p_b, signed int *p_asm, float *p_
 	TxString(buffer);
 	
 	memset(buffer, 0, 128);
+}
+
+float AverageR(float value, bool reset)
+{
+	static int index = 0;
+	static float result = 0;
+	static float buffer[256] = { 0.0 };
+	
+	if (reset)
+	{
+		for (int i=0; i<256; i++) buffer[i] = 0;
+		result = 0;
+		index = 0;
+		return 0;
+	}
+	
+	result += value - buffer[index];
+	buffer[index] = value;
+	index = (index + 1) % 256;
+	
+	return result/256;
 }
 
 void Initialization()
@@ -337,8 +361,9 @@ void Initialization()
 	DDRD = 0b00001100;
 	PORTD = 0b11110011;	    
 	
-	SetDefaultSettings();
 	LoadSettings();
+
+	AverageR(0.0, true);
 
 	Timer2(true);	
 	USART(Init);
@@ -781,43 +806,24 @@ bool Stop()
 	return false;
 }
 
-float GetRatio(unsigned int *p_a, unsigned int *p_b, st_kalman *p_kalmanA, st_kalman *p_kalmanB)
+float GetRatio(unsigned int *p_a, unsigned int *p_b)
 {
-	Kalman(*p_a, p_kalmanA);
-	Kalman(*p_b, p_kalmanB);
+	if (!*p_a || !*p_b) return 99.0;
 	
-	if (p_kalmanA->result <= p_kalmanB->result) 
-		return (1-p_kalmanA->result/(p_kalmanB->result == 0 ? 1 : p_kalmanB->result))*-1000.f;
+	if (*p_a <= *p_b) 
+		return (1-(float)*p_a/(*p_b == 0 ? 1 : *p_b))*1000;
 	else 
-		return (1-p_kalmanB->result/(p_kalmanA->result))*1000.f;
+		return (1-(float)*p_b/(*p_a))*-1000;
 }
 
 int main(void)
 {				
-	float temperature = 0.0, humidity = 0.0, tension = 0.0;
+	float ratio = 0.0, temperature = 0.0, humidity = 0.0;
 	unsigned int startDelayCount = 0, measureDelayCount = 0, envInterval = 0, a = 0, b = 0;
 	signed int assembling = 0;
-	
-	st_deflector deflector =
-	{
-		.stdev = 0,
-		.index = 0,
-		.bSize = DeflectorBufferSize,
-		.buffer = (float*)malloc(sizeof(float)*deflector.bSize),
-		.average =
-		{
-			.result = 0,
-			.index = 0,
-			.bSize = DeflectorBufferSize,
-			.buffer = (float*)malloc(sizeof(float)*deflector.average.bSize)
-		}
-	};
 	 
 	Initialization();
-	
-	st_kalman kalmanA = { 0, 0, 0, FactorEstimate, FactorEstimate, FactorSpeed };
-	st_kalman kalmanB = { 0, 0, 0, FactorEstimate, FactorEstimate, FactorSpeed };
-	
+		
 	while(1)
 	{			
 		if (HandleAfter8ms)
@@ -905,9 +911,7 @@ int main(void)
 			if (!Running && IsRun) 
 			{
 				IsRun = Stop();
-				KalmanReset(&kalmanA);
-				KalmanReset(&kalmanB);
-				Deflector(0, &deflector, true);
+				AverageR(0.0, true);
 			};	
 			
 			if (IsRun)						 
@@ -916,13 +920,13 @@ int main(void)
 				{		   
 					LedInv;
 					a = ((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA;
-					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;	
-					assembling = GetRatio(&a, &b, &kalmanA, &kalmanB); 
-					tension = adc*0.9765625;
-					Transmit(&a, &b, &assembling, &tension, &temperature, &humidity);
+					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;
+					ratio = AverageR(GetRatio(&a, &b), false);	
+					assembling = I + R*ratio + T*temperature + H*humidity;
+					Transmit(&a, &b, &assembling, &temperature, &humidity);
 					envInterval++;													    							   
 				}
-				
+								
 				if (!startDelayCount)
 				{
 					CountrolInstant(&a, &b);	

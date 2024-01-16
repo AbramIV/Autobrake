@@ -8,6 +8,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct st_average
 {
@@ -40,7 +41,8 @@ typedef struct st_deflector
 #define STAT_H_
 
 extern float Deviation(float *values, float *average);
-extern void Average(float value, st_average *average, bool reset);
+extern void Average(float value, st_average *average);
+extern void AverageReset(st_average *average);
 extern void Kalman(unsigned int value, st_kalman *kalman);
 extern void KalmanReset(st_kalman *kalman);
 extern float Deflector(float value, st_deflector *deflector, bool reset);
