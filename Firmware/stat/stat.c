@@ -17,12 +17,13 @@ float Deviation(float *values, float *average)
 	return sqrt(sum/128.f)*2.f;
 }
 
-void Average(float value, st_average *average)
+float Average(float value, st_average *average)
 {
 	average->result += value - average->buffer[average->index];
 	average->buffer[average->index] = value;
 	average->index = (average->index + 1) % average->bSize;
-	average->result /= average->bSize;
+	
+	return average->result / average->bSize;
 }
 
 void AverageReset(st_average *average)

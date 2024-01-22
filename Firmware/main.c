@@ -73,8 +73,8 @@
 #define VarsGetterPointer		92
 #define DefaultSetterPointer	99
 
-#define EnvRequestInterval	2
-#define ChannelsBuffersSize 256
+#define EnvironmentRequestInterval	2
+#define AverageWindowSize			256
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
@@ -100,10 +100,10 @@ const unsigned short MEASURE_DELAY = 30;
 const unsigned short SETTING_EXIT = 5;		
 const unsigned short SETTING_AUTO_EXIT = 30; 
 
-const float I = -405.634062187918;
-const float R = 1.10511540716106;
-const float T = 16.2670961564611;
-const float H = 1.91976049212877;
+const float I = 0.0;
+const float R = 1.0;
+const float T = 0.0;
+const float H = 0.0;
 
 int Pointers[] = {   OverfeedPointer, SetpointPointer, HysteresisUpPointer, HysteresisDownPointer, 
 					 PulseDurationPointer, PulsesIntervalPointer, StartDelayPointer, FactorAPointer, 
@@ -329,27 +329,6 @@ void Transmit(unsigned int *p_a, unsigned int *p_b, signed int *p_asm, float *p_
 	memset(buffer, 0, 128);
 }
 
-float AverageR(float value, bool reset)
-{
-	static int index = 0;
-	static float result = 0;
-	static float buffer[256] = { 0.0 };
-	
-	if (reset)
-	{
-		for (int i=0; i<256; i++) buffer[i] = 0;
-		result = 0;
-		index = 0;
-		return 0;
-	}
-	
-	result += value - buffer[index];
-	buffer[index] = value;
-	index = (index + 1) % 256;
-	
-	return result/256;
-}
-
 void Initialization()
 {
 	DDRB = 0b00010110;					
@@ -363,8 +342,6 @@ void Initialization()
 	
 	LoadSettings();
 
-	AverageR(0.0, true);
-
 	Timer2(true);	
 	USART(Init);
 	USART(On);
@@ -377,7 +354,7 @@ void Initialization()
 	LedOn;
 }
 
-void SetDirection(signed int *pAssembling, bool reset)
+void SetDirection(signed int *p_assembling, bool reset)
 {
 	static unsigned short motorState = Locked, stepCount = 0, stepsInterval = 0;
 	static unsigned short overtimeCount = 0, moveLackCount = 0, lastDifference = 0;
@@ -397,7 +374,7 @@ void SetDirection(signed int *pAssembling, bool reset)
 		return;
 	}
 	
-	if (abs(*pAssembling) <= Setpoint)   
+	if (abs(*p_assembling) <= Setpoint)   
 	{
 		if (motorState == Locked) return;
 		if (overtimeCount) overtimeCount = 0;
@@ -425,16 +402,16 @@ void SetDirection(signed int *pAssembling, bool reset)
 	
 	if (CurrentError == ERROR_A || CurrentError == ERROR_B || CurrentError == ERROR_C) return;
 	
-	if (MoveLackLimit && (*pAssembling >= HysteresisUp || *pAssembling <= HysteresisDown))
+	if (MoveLackLimit && (*p_assembling >= HysteresisUp || *p_assembling <= HysteresisDown))
 	{
-		if (motorState == Locked) lastDifference = abs(*pAssembling);
+		if (motorState == Locked) lastDifference = abs(*p_assembling);
 		else
 		{
-			if (abs(lastDifference - abs(*pAssembling)) < 2) moveLackCount++;
+			if (abs(lastDifference - abs(*p_assembling)) < 2) moveLackCount++;
 			else 
 			{
 				moveLackCount = 0;
-				lastDifference = abs(*pAssembling);
+				lastDifference = abs(*p_assembling);
 			}
 		}
 	}
@@ -450,7 +427,7 @@ void SetDirection(signed int *pAssembling, bool reset)
 	
 	if (PulseDuration)
 	{
-		if (*pAssembling >= HysteresisUp || (*pAssembling > 0 && motorState != Locked))
+		if (*p_assembling >= HysteresisUp || (*p_assembling > 0 && motorState != Locked))
 		{
 			OCR2B = Left;
 			motorState = Left;
@@ -460,7 +437,7 @@ void SetDirection(signed int *pAssembling, bool reset)
 			return;
 		}
 		
-		if (*pAssembling <= HysteresisDown || (*pAssembling < 0 && motorState != Locked))
+		if (*p_assembling <= HysteresisDown || (*p_assembling < 0 && motorState != Locked))
 		{
 			OCR2B = Right;
 			motorState = Right;
@@ -808,8 +785,6 @@ bool Stop()
 
 float GetRatio(unsigned int *p_a, unsigned int *p_b)
 {
-	if (!*p_a || !*p_b) return 99.0;
-	
 	if (*p_a <= *p_b) 
 		return (1-(float)*p_a/(*p_b == 0 ? 1 : *p_b))*1000;
 	else 
@@ -818,9 +793,11 @@ float GetRatio(unsigned int *p_a, unsigned int *p_b)
 
 int main(void)
 {				
-	float ratio = 0.0, temperature = 0.0, humidity = 0.0;
-	unsigned int startDelayCount = 0, measureDelayCount = 0, envInterval = 0, a = 0, b = 0;
+	float ratio = 0.0, ratioAverage = 0.0, temperature = 0.0, humidity = 0.0;
+	unsigned int startDelayCount = 0, measureDelayCount = 0, environmentRequestInterval = 0, counterT0 = 0, counterT1 = 0;
 	signed int assembling = 0;
+	 
+	st_average average = { 0, 0, AverageWindowSize, (float*)malloc(sizeof(float)*average.bSize) }; 
 	 
 	Initialization();
 		
@@ -865,10 +842,10 @@ int main(void)
 			 HandleAfter200ms = false;
 		}
 		
-		if (envInterval >= EnvRequestInterval)
+		if (environmentRequestInterval >= EnvironmentRequestInterval)
 		{
 			GetEnvironment(&temperature, &humidity);
-			envInterval = 0;
+			environmentRequestInterval = 0;
 		}
 		
 		if (HandleAfterSecond)	 
@@ -900,18 +877,18 @@ int main(void)
 			if (Running && !IsRun) 		  
 			{
 				IsRun = Start();
-				envInterval = EnvRequestInterval;
+				environmentRequestInterval = EnvironmentRequestInterval;
 				HandleAfterSecond = false;
 				startDelayCount = StartDelay;
 				measureDelayCount = MEASURE_DELAY;
-				a = 0; b = 0; assembling = 0;
+				counterT0 = 0; counterT1 = 0; assembling = 0;
 				continue;
 			}
 			
 			if (!Running && IsRun) 
 			{
 				IsRun = Stop();
-				AverageR(0.0, true);
+				AverageReset(&average);
 			};	
 			
 			if (IsRun)						 
@@ -919,17 +896,18 @@ int main(void)
 				if (!measureDelayCount)
 				{		   
 					LedInv;
-					a = ((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA;
-					b = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;
-					ratio = AverageR(GetRatio(&a, &b), false);	
-					assembling = I + R*ratio + T*temperature + H*humidity;
-					Transmit(&a, &b, &assembling, &temperature, &humidity);
-					envInterval++;													    							   
+					counterT0 = ((TCNT0 + Timer0_OverflowCount*256)/DividerA)*FactorA;
+					counterT1 = ((TCNT1 + Timer1_OverflowCount*65535L)/DividerB)*FactorB;
+					ratio = GetRatio(&counterT0, &counterT1);	
+					ratioAverage = Average(ratio, &average);
+					assembling = I + R*ratioAverage + T*temperature + H*humidity;
+					Transmit(&counterT0, &counterT1, &assembling, &temperature, &humidity);
+					environmentRequestInterval++;													    							   
 				}
 								
 				if (!startDelayCount)
 				{
-					CountrolInstant(&a, &b);	
+					CountrolInstant(&counterT0, &counterT1);	
 					SetDirection(&assembling, false);		
 				}
 				 

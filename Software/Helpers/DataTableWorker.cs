@@ -2,7 +2,7 @@
 
 namespace Helpers;
 
-internal static class TableHelper
+internal static class DataTableHelper
 {
     public static void ValidateDataSet(DataSet dataSet, params string[] sheetNames)
     {

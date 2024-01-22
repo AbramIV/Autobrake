@@ -41,7 +41,7 @@ typedef struct st_deflector
 #define STAT_H_
 
 extern float Deviation(float *values, float *average);
-extern void Average(float value, st_average *average);
+extern float Average(float value, st_average *average);
 extern void AverageReset(st_average *average);
 extern void Kalman(unsigned int value, st_kalman *kalman);
 extern void KalmanReset(st_kalman *kalman);
